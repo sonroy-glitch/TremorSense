@@ -9,5 +9,8 @@ app.use(express_1.default.json());
 app.get("/health", async (req, res) => {
     return res.status(200).json({ "msg": "Server is up and running" });
 });
+app.get("/", async (req, res) => {
+    return res.status(200).json({ "msg": "Route is working" });
+});
 app.listen(3000);
 //# sourceMappingURL=index.js.map
