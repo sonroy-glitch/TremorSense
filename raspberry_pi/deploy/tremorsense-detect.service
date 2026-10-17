@@ -1,0 +1,22 @@
+# Inference daemon: reads the sensor board and records episodes locally.
+# Install:
+#   sudo cp deploy/tremorsense-detect.service /etc/systemd/system/
+#   sudo systemctl enable --now tremorsense-detect
+[Unit]
+Description=TremorSense FOG detection
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/TremorSenseProject/raspberry_pi
+ExecStart=/home/pi/TremorSenseProject/raspberry_pi/venv/bin/python -m tremorsense.detect
+Restart=always
+RestartSec=10
+# Detection must survive a bad model or an unplugged sensor without the unit
+# flapping; the code already retries serial reads internally.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

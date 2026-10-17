@@ -1,0 +1,69 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model user {
+  id String @id @default(uuid())
+  name String
+  email String @unique
+  password String
+  cane_id String @unique
+  created_at DateTime @default(now())
+  fog_episodes fog_episode[]
+  gait_rollups gait_rollup[]
+}
+
+/// One freezing-of-gait episode: a run of consecutive windows the Pi's model
+/// classified as class 2 (freeze), merged into a single event before upload.
+/// Normal walking never produces a row here — see gait_rollup for that.
+model fog_episode {
+  id String @id @default(uuid())
+  cane_id String
+  started_at DateTime
+  ended_at DateTime
+  duration_ms Int
+  /// Mean model confidence across the windows that formed this episode (0..1).
+  confidence Float?
+  /// How many classified windows were merged into this episode.
+  window_count Int?
+  created_at DateTime @default(now())
+  user user @relation(fields: [cane_id], references: [cane_id], onDelete: Cascade)
+
+  // The Pi retries uploads until the server acknowledges them, so an episode's
+  // (cane, start) pair is its idempotency key: a replayed batch upserts
+  // instead of duplicating.
+  @@unique([cane_id, started_at])
+  @@index([cane_id, started_at])
+}
+
+/// Hourly summary of time spent walking normally. The Pi deliberately does not
+/// upload a timestamp per normal window (that would be ~43k rows/day); it sends
+/// these counts instead so the dashboard has a denominator.
+model gait_rollup {
+  id String @id @default(uuid())
+  cane_id String
+  /// Truncated to the top of the hour, UTC.
+  hour_start DateTime
+  /// Milliseconds of classified signal in this hour, by class. Stored as
+  /// durations rather than window counts so the numbers stay meaningful if the
+  /// Pi's window size is ever retuned.
+  normal_ms Int @default(0)
+  freeze_ms Int @default(0)
+  episode_count Int @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  user user @relation(fields: [cane_id], references: [cane_id], onDelete: Cascade)
+
+  @@unique([cane_id, hour_start])
+  @@index([cane_id, hour_start])
+}

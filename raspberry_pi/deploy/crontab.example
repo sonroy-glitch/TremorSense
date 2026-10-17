@@ -1,0 +1,8 @@
+# Alternative to the systemd timer, if you prefer cron.
+#   crontab -e   (as the pi user)
+#
+# Every 5 minutes: check for internet and upload anything buffered.
+*/5 * * * * cd /home/pi/TremorSenseProject/raspberry_pi && venv/bin/python -m tremorsense.sync >> /home/pi/tremorsense-sync.log 2>&1
+
+# On boot: start detection (only needed if you are NOT using the systemd unit).
+@reboot cd /home/pi/TremorSenseProject/raspberry_pi && venv/bin/python -m tremorsense.detect >> /home/pi/tremorsense-detect.log 2>&1

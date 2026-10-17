@@ -1,0 +1,16 @@
+# Runs the upload every 5 minutes. Each run checks for internet first and
+# exits quietly when there is none.
+# Install:
+#   sudo cp deploy/tremorsense-sync.{service,timer} /etc/systemd/system/
+#   sudo systemctl enable --now tremorsense-sync.timer
+[Unit]
+Description=Upload TremorSense data every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+# Fire immediately after a missed window (e.g. the Pi was powered off).
+Persistent=true
+
+[Install]
+WantedBy=timers.target

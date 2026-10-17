@@ -1,0 +1,11 @@
+# One upload attempt. Triggered by tremorsense-sync.timer (or cron).
+[Unit]
+Description=TremorSense data upload
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/home/pi/TremorSenseProject/raspberry_pi
+ExecStart=/home/pi/TremorSenseProject/raspberry_pi/venv/bin/python -m tremorsense.sync
