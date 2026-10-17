@@ -94,6 +94,15 @@ Environment variable:
 `VITE_*` variables are inlined at build time, so changing it requires a
 redeploy, not just a restart.
 
+> **Why `package.json` has an `overrides` entry.** Vercel's registry proxy
+> blocks `@tanstack/start-server-core` below 1.169.39 over an XSS advisory
+> ([GHSA-qx66-fv34-fjm8](https://github.com/TanStack/router/security/advisories/GHSA-qx66-fv34-fjm8)),
+> failing the install with a 403. `@tanstack/react-start@^1.169.3` resolves it
+> to 1.169.44, and the override keeps any future install from pulling a
+> vulnerable copy back in transitively. Do **not** work around this with
+> `DANGEROUSLY_DEPLOY_VULNERABLE_TANSTACK_START_XSS=1` — that ships a known XSS
+> in the server-rendering path.
+
 After deploying, go back and put the Vercel URL into the backend's
 `CORS_ORIGINS`.
 

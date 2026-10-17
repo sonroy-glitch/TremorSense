@@ -36,7 +36,10 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+// TanStack Router types `error` as unknown — a thrown value is not guaranteed
+// to be an Error. Both console.error and reportLovableError accept unknown, so
+// nothing here needs to narrow it.
+function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
