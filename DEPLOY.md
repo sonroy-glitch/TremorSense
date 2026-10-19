@@ -16,9 +16,44 @@ both the URL and the ingest key.
 ## 1. Database
 
 Any Postgres works (Prisma 7 connects via the `pg` driver adapter). Northflank's
-managed Postgres addon or Prisma Postgres (`npx create-db`) are both fine.
+managed Postgres addon, Supabase, or Prisma Postgres (`npx create-db`) are all
+fine.
 
 Keep the connection string — it becomes `DATABASE_URL`.
+
+### If you use Supabase (or any pooler), you need two URLs
+
+Supabase gives you the same database on two ports, and they are not
+interchangeable:
+
+| Port | Mode | Use it for |
+|---|---|---|
+| **6543** | Transaction pooler | `DATABASE_URL` — the running app |
+| **5432** | Session / direct | `DIRECT_URL` — migrations only |
+
+`prisma migrate deploy` issues `SET session_replication_role = 'replica'` and
+takes a session-level advisory lock. A transaction-mode pooler supports
+neither, so a container that only has the 6543 URL will fail or hang at the
+migration step on boot. (Session mode on port 6543 was removed in February
+2025 — 6543 is transaction-only now.)
+
+```
+DATABASE_URL=postgresql://USER:PASS@aws-0-REGION.pooler.supabase.com:6543/postgres
+DIRECT_URL=postgresql://USER:PASS@aws-0-REGION.pooler.supabase.com:5432/postgres
+```
+
+[backend/prisma.config.ts](backend/prisma.config.ts) prefers `DIRECT_URL` for
+every CLI command, while the app keeps using `DATABASE_URL` — the two paths are
+deliberately separate. If `DATABASE_URL` looks like a pooler and `DIRECT_URL`
+is missing, `docker-entrypoint.sh` stops with an explanatory error rather than
+hanging.
+
+You do **not** need `?pgbouncer=true`. That flag disabled prepared statements
+in Prisma's old query engine; the `pg` driver adapter only uses named prepared
+statements if given a `statementNameGenerator`, which this project does not.
+
+On a small pooler, also set `PG_POOL_MAX` (see below) so the app doesn't
+exhaust the connection allowance.
 
 Migrations are applied automatically on container start by
 `backend/docker-entrypoint.sh` (`prisma migrate deploy`, which only runs
@@ -46,7 +81,8 @@ Environment variables:
 | Variable | Value |
 |---|---|
 | `NODE_ENV` | `production` |
-| `DATABASE_URL` | from step 1 |
+| `DATABASE_URL` | from step 1 (pooler/6543 is fine) |
+| `DIRECT_URL` | session-mode URL (Supabase port 5432) — required if `DATABASE_URL` is a pooler |
 | `JWT_SECRET` | `openssl rand -base64 48` — rotating it signs everyone out |
 | `JWT_EXPIRES_IN` | `30d` (optional) |
 | `PI_INGEST_KEY` | `openssl rand -hex 32` — the cane's shared secret |
@@ -134,6 +170,7 @@ Pi keeps buffering, and the data uploads once someone signs up with it.
 | Variable | Service | Required |
 |---|---|---|
 | `DATABASE_URL` | backend | yes |
+| `DIRECT_URL` | backend | only if `DATABASE_URL` is a transaction pooler |
 | `JWT_SECRET` | backend | yes |
 | `PI_INGEST_KEY` | backend + Pi | yes (same value) |
 | `GROQ_API_KEY` | backend | yes (chatbot 502s without it) |

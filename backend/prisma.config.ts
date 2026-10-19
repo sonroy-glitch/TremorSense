@@ -9,6 +9,15 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"] ?? "",
+    // This file is read by the Prisma CLI only (migrate, db, introspect) — the
+    // running app builds its own client in prisma/client.ts from DATABASE_URL.
+    // That split is deliberate: migrations need a SESSION-mode connection and
+    // the app is happy on a transaction pooler.
+    //
+    // `migrate deploy` issues `SET session_replication_role = 'replica'` and
+    // takes a session-level advisory lock. A transaction-mode pooler
+    // (Supabase port 6543, PgBouncer, Supavisor) supports neither, so point
+    // DIRECT_URL at the session-mode/direct endpoint (Supabase port 5432).
+    url: process.env["DIRECT_URL"] || process.env["DATABASE_URL"] || "",
   },
 });
