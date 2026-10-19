@@ -37,12 +37,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl \
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
+# Only the compiled app ships — no schema and no migrations folder, and nothing
+# ever invokes the Prisma CLI. The container never touches the database
+# structure, it just connects. Apply schema changes yourself before deploying;
+# see DEPLOY.md. (The `prisma` CLI still lands in node_modules because
+# @prisma/client depends on it, but it is unused at runtime.)
 COPY --from=build /app/dist ./dist
-# `prisma migrate deploy` at startup needs the schema, migrations and config.
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/prisma.config.ts ./prisma.config.ts
-COPY docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh
 
 # Northflank injects PORT; the app falls back to 3004.
 ENV PORT=3004
@@ -54,4 +54,4 @@ USER node
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3004)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["node", "dist/index.js"]

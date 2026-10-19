@@ -28,14 +28,13 @@ interchangeable:
 
 | Port | Mode | Use it for |
 |---|---|---|
-| **6543** | Transaction pooler | `DATABASE_URL` — the running app |
-| **5432** | Session / direct | `DIRECT_URL` — migrations only |
+| **6543** | Transaction pooler | `DATABASE_URL` — the running app (Northflank) |
+| **5432** | Session / direct | `DIRECT_URL` — `prisma migrate`, from your machine |
 
 `prisma migrate deploy` issues `SET session_replication_role = 'replica'` and
 takes a session-level advisory lock. A transaction-mode pooler supports
-neither, so a container that only has the 6543 URL will fail or hang at the
-migration step on boot. (Session mode on port 6543 was removed in February
-2025 — 6543 is transaction-only now.)
+neither, so running migrations against the 6543 URL fails or hangs. (Session
+mode on port 6543 was removed in February 2025 — 6543 is transaction-only.)
 
 ```
 DATABASE_URL=postgresql://USER:PASS@aws-0-REGION.pooler.supabase.com:6543/postgres
@@ -44,9 +43,8 @@ DIRECT_URL=postgresql://USER:PASS@aws-0-REGION.pooler.supabase.com:5432/postgres
 
 [backend/prisma.config.ts](backend/prisma.config.ts) prefers `DIRECT_URL` for
 every CLI command, while the app keeps using `DATABASE_URL` — the two paths are
-deliberately separate. If `DATABASE_URL` looks like a pooler and `DIRECT_URL`
-is missing, `docker-entrypoint.sh` stops with an explanatory error rather than
-hanging.
+deliberately separate. Since the container never migrates, `DIRECT_URL` only
+needs to exist in your **local** `backend/.env`, not in Northflank.
 
 You do **not** need `?pgbouncer=true`. That flag disabled prepared statements
 in Prisma's old query engine; the `pg` driver adapter only uses named prepared
@@ -55,10 +53,28 @@ statements if given a `statementNameGenerator`, which this project does not.
 On a small pooler, also set `PG_POOL_MAX` (see below) so the app doesn't
 exhaust the connection allowance.
 
-Migrations are applied automatically on container start by
-`backend/docker-entrypoint.sh` (`prisma migrate deploy`, which only runs
-committed migrations and never resets anything). Set `SKIP_MIGRATIONS=1` if you
-would rather run them as a separate release step.
+### Applying the schema
+
+**The container does not touch the database structure.** It has no migration
+step, no schema and no Prisma CLI invocation — it only connects. So the schema
+must already exist in the database before the backend serves traffic, or every
+query fails on missing tables.
+
+Apply it from your own machine, once per schema change, before deploying:
+
+```bash
+cd backend
+# DIRECT_URL (session mode) if your DATABASE_URL is a pooler — see above
+npx prisma migrate deploy
+```
+
+`migrate deploy` only replays migrations already committed under
+`prisma/migrations/`; it never generates or resets anything. Verify with
+`npx prisma migrate status`.
+
+> Deploy order matters: apply the schema **before** rolling out a backend that
+> depends on it. A container that starts against an out-of-date schema will
+> return 500s rather than fixing itself.
 
 > If this database already held the old `dashboard` / `piData` tables, the
 > migration `20261016120000_fog_episodes_and_rollups` **drops both**. They were
@@ -82,7 +98,6 @@ Environment variables:
 |---|---|
 | `NODE_ENV` | `production` |
 | `DATABASE_URL` | from step 1 (pooler/6543 is fine) |
-| `DIRECT_URL` | session-mode URL (Supabase port 5432) — required if `DATABASE_URL` is a pooler |
 | `JWT_SECRET` | `openssl rand -base64 48` — rotating it signs everyone out |
 | `JWT_EXPIRES_IN` | `30d` (optional) |
 | `PI_INGEST_KEY` | `openssl rand -hex 32` — the cane's shared secret |
@@ -170,7 +185,7 @@ Pi keeps buffering, and the data uploads once someone signs up with it.
 | Variable | Service | Required |
 |---|---|---|
 | `DATABASE_URL` | backend | yes |
-| `DIRECT_URL` | backend | only if `DATABASE_URL` is a transaction pooler |
+| `DIRECT_URL` | local only | when running `prisma migrate` against a pooled database |
 | `JWT_SECRET` | backend | yes |
 | `PI_INGEST_KEY` | backend + Pi | yes (same value) |
 | `GROQ_API_KEY` | backend | yes (chatbot 502s without it) |
